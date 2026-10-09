@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#121311"><title>光感文字 · Words into light</title>
+<link rel="preload" href="fonts/Tangerine-Regular.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="scene" aria-label="文字穿过暗色墙面，化成光束投射到地面的互动空间"></canvas>
+<div class="grain" aria-hidden="true"></div>
+<header class="header"><a class="brand" href="./" aria-label="光感文字首页"><span class="brand-mark">✳</span><span>光感文字<small>WORDS INTO LIGHT</small></span></a></header>
+<main>
+<section class="actions" aria-label="场景操作"><button id="write" class="primary"><svg viewBox="0 0 24 24"><path d="m14 5 5 5M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z"/></svg>开始书写<span class="button-arrow">↗</span></button><button id="replay" class="secondary"><svg viewBox="0 0 24 24"><path d="M4 11a8 8 0 1 1 2 7M4 4v7h7"/></svg>重新播放</button><button id="settings-toggle" class="secondary settings-button" aria-label="调节光线" aria-expanded="false"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 17h16M9 4v6m6 4v6"/></svg><span>调节光线</span></button></section>
+<aside id="settings" class="settings-panel" hidden><div class="panel-heading">让光靠近一点<button id="close-settings" class="icon-button" aria-label="关闭光线设置">×</button></div><label for="intensity">光的强度 <output id="intensity-value">75%</output></label><input id="intensity" type="range" min="20" max="100" value="75"><label for="angle">光源位置 <output id="angle-value">居中</output></label><input id="angle" type="range" min="-100" max="100" value="0"><div class="temperature"><span>光的颜色</span><button class="swatch active" data-color="warm" aria-label="暖白光" aria-pressed="true"></button><button class="swatch cool" data-color="cool" aria-label="冷白光" aria-pressed="false"></button></div></aside>
+<section id="editor" class="editor-panel" hidden aria-label="书写文字"><div class="panel-heading">把此刻写进光里<button id="close-editor" class="icon-button" aria-label="关闭文字编辑">×</button></div><textarea id="text-input" maxlength="80" spellcheck="false" aria-label="墙面文字" placeholder="写下你想留住的那句话…"></textarea><div class="editor-bottom"><span>回车换行 · 最多 80 字</span><button id="project">逐字投映 <span>↗</span></button></div></section>
+</main>
+<script src="light-renderer.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
