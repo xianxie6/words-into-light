@@ -7,6 +7,7 @@
   const tc = textCanvas.getContext('2d');
   tc.setTransform(1024 / 1000, 0, 0, 1024 / 1100, 0, 0);
   const lightRenderer = window.createLightRenderer(canvas);
+  const galleryRenderer = window.createGalleryRenderer(canvas);
   const $ = id => document.getElementById(id);
   const input = $('text-input');
   const initialText = 'Let the stars keep the sky.\nI have your light,\nand a lifetime\nbeside you.';
@@ -15,6 +16,9 @@
   let w, h, dpr, f, cx, cy, strength = .75, lightX = 0, color = 'warm';
   let pointer = { x: 0, y: 0 }, drift = { x: 0, y: 0 }, lastType = 0, lastDraw = 0;
   let textDirty = true, previousCursor = -1, texture, seeded = 148, fontReady = false;
+  let mode = galleryRenderer ? 'gallery' : 'wall', zoom = 0, imageFit = 'cover';
+  const roomView = { x: 0, y: 0 }, viewTarget = { x: 0, y: 0 };
+  let dragStart = null, didDrag = false, viewOffset = { x: 0, y: 0 }, imageRequest = 0;
   input.value = content;
   const rand = () => { seeded = (seeded * 16807) % 2147483647; return (seeded - 1) / 2147483646; };
   const dust = Array.from({ length: 90 }, () => ({ x: rand(), y: rand(), r: rand() * .9 + .2, speed: rand() * .012 + .004, phase: rand() * 6.28 }));
@@ -68,9 +72,16 @@
     });
 
     if (lightRenderer) lightRenderer.updateText(textCanvas);
+    if (galleryRenderer) galleryRenderer.updateText(textCanvas);
     textDirty = false; previousCursor = cursor;
   }
   function renderRoom(time) {
+    if (mode === 'gallery' && galleryRenderer) {
+      roomView.x += (viewTarget.x - roomView.x) * .09;
+      roomView.y += (viewTarget.y - roomView.y) * .09;
+      galleryRenderer.render({ w, h, view: roomView, zoom, strength, lightX, color, imageFit });
+      return;
+    }
     if (lightRenderer) { lightRenderer.render({ w, h, f, cx, cy, strength, lightX, color, drift, time: reduced ? 0 : time }); return; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const bg = ctx.createRadialGradient(cx, h * .4, 0, cx, h * .4, w * .65);
@@ -162,11 +173,11 @@
     }
     requestAnimationFrame(frame);
   }
-  function startTyping() { content = input.value.slice(0, 80); displayed = reduced ? content : ''; typing = !reduced && content.length > 0; textDirty = true; lastType = performance.now(); }
+  function startTyping() { content = input.value.slice(0, 240); displayed = reduced ? content : ''; typing = !reduced && content.length > 0; textDirty = true; lastType = performance.now(); }
   function openEditor() { $('editor').hidden = false; $('settings').hidden = true; $('settings-toggle').setAttribute('aria-expanded', 'false'); input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
   function closeEditor() { $('editor').hidden = true; $('write').focus(); }
   $('write').addEventListener('click', openEditor);
-  canvas.addEventListener('click', openEditor);
+  canvas.addEventListener('click', () => { if (!didDrag) openEditor(); });
   $('close-editor').addEventListener('click', closeEditor);
   input.addEventListener('input', () => { content = input.value; displayed = content; typing = false; textDirty = true; try { localStorage.setItem('light-wall-text', content); } catch {} });
   $('project').addEventListener('click', () => { startTyping(); closeEditor(); });
@@ -178,9 +189,127 @@
   document.querySelectorAll('.swatch').forEach(el => el.addEventListener('click', () => { color = el.dataset.color; textDirty = true; document.querySelectorAll('.swatch').forEach(b => { b.classList.toggle('active', b === el); b.setAttribute('aria-pressed', String(b === el)); }); }));
 
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { $('editor').hidden = true; $('settings').hidden = true; $('settings-toggle').setAttribute('aria-expanded', 'false'); } if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !$('editor').hidden) { startTyping(); closeEditor(); } });
-  window.addEventListener('pointermove', e => { if (!reduced) { pointer.x = (e.clientX / w - .5) * .09; pointer.y = (e.clientY / h - .5) * .045; } });
+  function setMode(next) {
+    if (next === 'gallery' && !galleryRenderer) { showNotice('此浏览器无法显示 3D 展厅，已保留光墙模式'); return; }
+    mode = next; document.body.dataset.mode = mode;
+    lightRenderer?.setVisible(mode === 'wall'); galleryRenderer?.setVisible(mode === 'gallery');
+    canvas.style.opacity = mode === 'gallery' || lightRenderer ? '0' : '1';
+    $('gallery-mode').setAttribute('aria-pressed', String(mode === 'gallery'));
+    $('wall-mode').setAttribute('aria-pressed', String(mode === 'wall'));
+    $('upload').hidden = mode !== 'gallery'; $('gallery-settings').hidden = mode !== 'gallery';
+    textDirty = true;
+    try { localStorage.setItem('light-space-mode', mode); } catch {}
+  }
+  $('gallery-mode').addEventListener('click', () => setMode('gallery'));
+  $('wall-mode').addEventListener('click', () => setMode('wall'));
+  $('zoom').addEventListener('input', e => { zoom = Number(e.target.value) / 10; $('zoom-value').textContent = zoom > 0 ? '靠近' : zoom < 0 ? '退后' : '原位'; });
+  $('image-fit').addEventListener('change', e => { imageFit = e.target.value; });
+  $('reset-view').addEventListener('click', () => { viewOffset = { x: 0, y: 0 }; viewTarget.x = 0; viewTarget.y = 0; zoom = 0; $('zoom').value = '0'; $('zoom-value').textContent = '原位'; });
+  canvas.addEventListener('pointerdown', e => {
+    didDrag = false;
+    if (mode === 'gallery') { dragStart = { x: e.clientX, y: e.clientY, vx: viewOffset.x, vy: viewOffset.y }; canvas.setPointerCapture(e.pointerId); }
+  });
+  canvas.addEventListener('pointerup', () => { dragStart = null; });
+  canvas.addEventListener('lostpointercapture', () => { dragStart = null; });
+  canvas.addEventListener('pointercancel', () => { dragStart = null; didDrag = true; });
+  window.addEventListener('pointermove', e => {
+    if (!reduced) { pointer.x = (e.clientX / w - .5) * .09; pointer.y = (e.clientY / h - .5) * .045; }
+    if (dragStart) {
+      if (Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) > 5) didDrag = true;
+      viewOffset.x = Math.max(-4, Math.min(4, dragStart.vx + (e.clientX - dragStart.x) / w * 5));
+      viewOffset.y = Math.max(-1.1, Math.min(1.1, dragStart.vy + (e.clientY - dragStart.y) / h * 2));
+    }
+    viewTarget.x = viewOffset.x + (reduced || e.pointerType === 'touch' ? 0 : (e.clientX / w - .5) * .55);
+    viewTarget.y = viewOffset.y + (reduced || e.pointerType === 'touch' ? 0 : (e.clientY / h - .5) * .24);
+  });
+  canvas.addEventListener('keydown', e => {
+    if (mode !== 'gallery' || !['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    if (e.key === 'ArrowLeft') viewOffset.x = Math.max(-4, viewOffset.x - .2);
+    if (e.key === 'ArrowRight') viewOffset.x = Math.min(4, viewOffset.x + .2);
+    if (e.key === 'ArrowUp') viewOffset.y = Math.max(-1.1, viewOffset.y - .1);
+    if (e.key === 'ArrowDown') viewOffset.y = Math.min(1.1, viewOffset.y + .1);
+    viewTarget.x = viewOffset.x; viewTarget.y = viewOffset.y;
+  });
   window.addEventListener('resize', resize);
-  try { const saved = localStorage.getItem('light-wall-text'); if (saved !== null) { input.value = saved.slice(0, 80); content = input.value; if (reduced) displayed = content; } } catch {}
+  try {
+    const saved = localStorage.getItem('light-wall-text');
+    if (saved !== null) { input.value = saved.slice(0, 240); content = input.value; }
+    const savedMode = localStorage.getItem('light-space-mode');
+    if (savedMode === 'wall') mode = 'wall';
+  } catch {}
+  if (mode === 'gallery' || reduced) { displayed = content; typing = false; }
+  setMode(mode);
+
+  let noticeTimer;
+  function showNotice(message) {
+    $('notice').textContent = message; $('notice').hidden = false;
+    clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('notice').hidden = true; }, 4200);
+  }
+  function photoStore(action, value) {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('words-into-light', 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('photos');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result, tx = db.transaction('photos', action === 'get' ? 'readonly' : 'readwrite');
+        const store = tx.objectStore('photos');
+        const op = action === 'get' ? store.get('portrait') : action === 'put' ? store.put(value, 'portrait') : store.delete('portrait');
+        let result; op.onsuccess = () => { result = op.result; };
+        tx.oncomplete = () => { db.close(); resolve(result); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+        tx.onabort = () => { db.close(); reject(tx.error); };
+      };
+    });
+  }
+  async function loadPicture(source) {
+    const request = ++imageRequest;
+    const url = source instanceof Blob ? URL.createObjectURL(source) : source;
+    const image = new Image(); image.src = url;
+    try {
+      await image.decode();
+      if (request !== imageRequest) return false;
+      galleryRenderer?.updateImage(image); return true;
+    } finally { if (source instanceof Blob) URL.revokeObjectURL(url); }
+  }
+  $('upload').addEventListener('click', () => $('photo-input').click());
+  $('photo-input').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    if (!/^image\/(jpeg|png|webp|avif|gif)$/.test(file.type)) { showNotice('请选择 JPG、PNG、WebP、AVIF 或 GIF 图片'); e.target.value = ''; return; }
+    if (file.size > 20 * 1024 * 1024) { showNotice('请选择小于 20 MB 的图片'); e.target.value = ''; return; }
+    $('upload').disabled = true;
+    try {
+      const url = URL.createObjectURL(file), image = new Image();
+      try { image.src = url; await image.decode(); } finally { URL.revokeObjectURL(url); }
+      const scale = Math.min(1, 1600 / Math.max(image.width, image.height));
+      const photo = document.createElement('canvas'); photo.width = Math.max(1, Math.round(image.width * scale)); photo.height = Math.max(1, Math.round(image.height * scale));
+      photo.getContext('2d').drawImage(image, 0, 0, photo.width, photo.height);
+      const blob = await new Promise(resolve => photo.toBlob(resolve, 'image/jpeg', .9));
+      if (!blob) throw new Error('Image conversion failed');
+      const applied = await loadPicture(blob);
+      if (applied) {
+        try { await photoStore('put', blob); showNotice('照片已换上，只保存在当前浏览器'); }
+        catch { showNotice('照片已换上；当前浏览器无法保存，刷新后会恢复示例'); }
+      }
+    } catch { showNotice('这张图片未能读取，请换一张 JPG 或 PNG'); }
+    finally { $('upload').disabled = false; e.target.value = ''; }
+  });
+  $('reset-photo').addEventListener('click', async () => {
+    try {
+      const removed = await photoStore('delete').then(() => true, () => false);
+      await loadPicture('./assets/van-gogh-self-portrait.jpg');
+      showNotice(removed ? '已恢复梵高自画像' : '已恢复示例；浏览器未能清除之前保存的照片');
+    } catch { showNotice('恢复图片失败，请稍后重试'); }
+  });
+  if (galleryRenderer) {
+    (async () => {
+      try {
+        const version = imageRequest;
+        const savedPhoto = await photoStore('get').catch(() => null);
+        if (version === imageRequest) await loadPicture(savedPhoto || './assets/van-gogh-self-portrait.jpg');
+      } catch { showNotice('示例图片未能加载，你仍可以上传自己的照片'); }
+    })();
+  }
 
   document.fonts.load('400 132px "Tangerine"').catch(() => []).then(() => {
     fontReady = true; textDirty = true; lastType = performance.now();

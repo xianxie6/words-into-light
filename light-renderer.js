@@ -101,6 +101,7 @@ void main(){
   const uniforms=Object.fromEntries(['resolution','center','focal','intensity','lightOffset','drift','lightColor','letters','time'].map(n=>[n,gl.getUniformLocation(program,n)]));
   gl.uniform1i(uniforms.letters,0);
   return {
+    setVisible(visible){ canvas.hidden = !visible; },
     updateText(text){ gl.bindTexture(gl.TEXTURE_2D,tex);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,text);gl.generateMipmap(gl.TEXTURE_2D); },
     render({w,h,f,cx,cy,strength,lightX,color,drift,time}){
       const scale=Math.min(devicePixelRatio||1,1.25,1500/w);
